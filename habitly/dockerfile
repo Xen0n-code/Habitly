@@ -1,0 +1,26 @@
+# ① Node.js公式の軽量イメージを使う
+FROM node:18-alpine
+
+# ② 作業ディレクトリを作成
+WORKDIR /app
+
+# ③ package.json と lock ファイルだけをコピー（キャッシュ活用のため）
+COPY package*.json ./
+
+# ④ 依存関係をインストール
+RUN npm install
+
+# ⑤ 残りの全ファイルをコピー
+COPY . .
+
+# ⑥ Next.js をビルド
+RUN npm run build
+
+# ⑦ Cloud Runが使うPORTを環境変数から取得
+ENV PORT 8080
+
+# ⑧ 外部アクセス用にポート公開（ただのヒント）
+EXPOSE 8080
+
+# ⑨ サーバー起動（Cloud RunはENTRYPOINTをこれに使う）
+CMD ["npm", "start"]
