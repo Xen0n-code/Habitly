@@ -1,4 +1,3 @@
-
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -23,23 +22,24 @@ import {
   arrayUnion,
   serverTimestamp
 } from 'firebase/firestore';
-import { FIREBASE_CONFIG, FIRESTORE_COLLECTIONS } from '../constants';
+import { firebaseConfig, FIRESTORE_COLLECTIONS } from '../constants';
 import type { UserProfile, Habit, StreakData } from '../types';
 import { getLocalDateString } from '../types';
 
 
-const firebaseApp = initializeApp(FIREBASE_CONFIG);
+const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 
 export const onAuthChange = (callback: (user: UserProfile | null) => void): (() => void) => {
   return onAuthStateChanged(auth, async (firebaseUser: User | null) => {
+    console.log("🔥 Firebase Auth 状態:", firebaseUser);
+    console.log("🧪 auth.currentUser:", auth.currentUser);
     if (firebaseUser) {
       const userRef = doc(db, FIRESTORE_COLLECTIONS.USERS, firebaseUser.uid);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
-        // Create user profile if it doesn't exist
         await setDoc(userRef, {
           displayName: firebaseUser.displayName,
           email: firebaseUser.email,
@@ -65,7 +65,6 @@ export const signInWithGoogle = async (): Promise<UserProfile | null> => {
     const user = result.user;
     const userRef = doc(db, FIRESTORE_COLLECTIONS.USERS, user.uid);
     
-    // Check if user profile exists, if not, create it
     const userSnap = await getDoc(userRef);
     if (!userSnap.exists()) {
       await setDoc(userRef, {
@@ -106,7 +105,6 @@ export const createHabit = async (userId: string, name: string, description?: st
       createdAt: serverTimestamp(),
     });
     
-    // Create initial streak for the owner
     const streakId = `${habitRef.id}_${userId}`;
     const userProfile = await getUserProfile(userId);
     await setDoc(doc(db, FIRESTORE_COLLECTIONS.STREAKS, streakId), {
@@ -123,12 +121,23 @@ export const createHabit = async (userId: string, name: string, description?: st
       name, 
       ownerId: userId, 
       participantUids: [userId], 
-      createdAt: Timestamp.now(), // Approximate, actual is serverTimestamp
+      createdAt: Timestamp.now(), 
       description 
     };
   } catch (error) {
     console.error("習慣の作成エラー:", error);
     return null;
+  }
+};
+
+export const updateHabit = async (habitId: string, data: { name?: string, description?: string }): Promise<boolean> => {
+  try {
+    const habitRef = doc(db, FIRESTORE_COLLECTIONS.HABITS, habitId);
+    await updateDoc(habitRef, data);
+    return true;
+  } catch (error) {
+    console.error("習慣の更新エラー:", error);
+    return false;
   }
 };
 
@@ -166,7 +175,8 @@ export const getStreakData = async (habitId: string, userId: string): Promise<St
       return { id: docSnap.id, ...docSnap.data() } as StreakData;
     }
     return null;
-  } catch (error) {
+  } catch (error)
+ {
     console.error("連続記録データの取得エラー:", error);
     return null;
   }
@@ -180,7 +190,7 @@ export const checkInHabit = async (habitId: string, userId: string): Promise<Str
     const docSnap = await getDoc(streakRef);
     if (!docSnap.exists()) {
       console.error("連続記録データが見つかりません。");
-      return null; // Or create it if joining
+      return null; 
     }
 
     const currentData = docSnap.data() as StreakData;
@@ -188,7 +198,6 @@ export const checkInHabit = async (habitId: string, userId: string): Promise<Str
     let newStreak = currentData.currentStreak;
 
     if (currentData.lastCheckInDate === todayString) {
-      // Already checked in today
       return currentData;
     }
 
@@ -197,10 +206,8 @@ export const checkInHabit = async (habitId: string, userId: string): Promise<Str
     const yesterdayString = getLocalDateString(yesterday);
 
     if (currentData.lastCheckInDate === yesterdayString || currentData.lastCheckInDate === null) {
-      // Continuous or first check-in
       newStreak = (currentData.lastCheckInDate === null) ? 1 : newStreak + 1;
     } else {
-      // Streak broken (missed more than one day)
       newStreak = 1;
     }
     
@@ -216,6 +223,52 @@ export const checkInHabit = async (habitId: string, userId: string): Promise<Str
     return null;
   }
 };
+
+export const undoCheckIn = async (habitId: string, userId: string): Promise<StreakData | null> => {
+  const streakId = `${habitId}_${userId}`;
+  const streakRef = doc(db, FIRESTORE_COLLECTIONS.STREAKS, streakId);
+
+  try {
+    const docSnap = await getDoc(streakRef);
+    if (!docSnap.exists()) {
+      console.error("連続記録データが見つかりません（取り消し操作）。");
+      return null;
+    }
+
+    const currentData = docSnap.data() as StreakData;
+    const todayString = getLocalDateString(new Date());
+
+    if (currentData.lastCheckInDate !== todayString) {
+      // Not checked in today, or already undone
+      console.warn("本日のチェックイン記録がないため、取り消しできません。");
+      return currentData; 
+    }
+
+    let newStreak = currentData.currentStreak - 1;
+    if (newStreak < 0) newStreak = 0; // Safety net
+
+    let newLastCheckInDate: string | null;
+    if (newStreak === 0) {
+      newLastCheckInDate = null;
+    } else {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      newLastCheckInDate = getLocalDateString(yesterday);
+    }
+    
+    const updatedData = { ...currentData, currentStreak: newStreak, lastCheckInDate: newLastCheckInDate };
+    await updateDoc(streakRef, {
+      currentStreak: newStreak,
+      lastCheckInDate: newLastCheckInDate,
+    });
+    return updatedData;
+
+  } catch (error) {
+    console.error("チェックイン取り消しエラー:", error);
+    return null;
+  }
+};
+
 
 export const getHabitLeaderboard = async (habitId: string): Promise<StreakData[]> => {
   try {
@@ -241,7 +294,7 @@ export const joinHabit = async (habitId: string, userId: string): Promise<boolea
 
     const habitData = habitSnap.data() as Habit;
     if (habitData.participantUids.includes(userId)) {
-      return true; // Already a participant
+      return true; 
     }
 
     await updateDoc(habitRef, {
@@ -280,4 +333,3 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
 };
 
 export { auth, db };
-    

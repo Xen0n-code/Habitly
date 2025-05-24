@@ -1,11 +1,11 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { getLocalDateString } from '../../types';
 
 interface StreakDisplayProps {
   streak: number;
   lastCheckInDate: string | null; // YYYY-MM-DD
   onCheckIn: () => void;
+  onUndoCheckIn: () => void;
 }
 
 const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -14,7 +14,14 @@ const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
-const StreakDisplay: React.FC<StreakDisplayProps> = ({ streak, lastCheckInDate, onCheckIn }) => {
+const UndoIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className || "w-6 h-6"}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+  </svg>
+);
+
+
+const StreakDisplay: React.FC<StreakDisplayProps> = ({ streak, lastCheckInDate, onCheckIn, onUndoCheckIn }) => {
   const [isIncremented, setIsIncremented] = useState(false);
   const todayString = getLocalDateString(new Date());
   const alreadyCheckedInToday = lastCheckInDate === todayString;
@@ -72,9 +79,18 @@ const StreakDisplay: React.FC<StreakDisplayProps> = ({ streak, lastCheckInDate, 
        {streak === 0 && !alreadyCheckedInToday && (
         <p className="mt-2 text-sm text-gray-400">最初の1歩を踏み出そう！</p>
       )}
+      {alreadyCheckedInToday && streak > 0 && (
+        <button
+          onClick={onUndoCheckIn}
+          className="mt-4 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm flex items-center"
+          aria-label="今日の記録を取り消す"
+        >
+          <UndoIcon className="w-5 h-5 mr-1.5" />
+          今日の記録を取り消す
+        </button>
+      )}
     </div>
   );
 };
 
 export default StreakDisplay;
-    
