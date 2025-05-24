@@ -1,5 +1,0 @@
-
-{
-  "name": "Habitly",
-  "description": "A social habit tracking application to build habits and compete with friends. Users can create habits, track their daily progress (streaks), and see a leaderboard of friends participating in the same habit. Streaks reset if a habit is not completed for two consecutive days."
-}
